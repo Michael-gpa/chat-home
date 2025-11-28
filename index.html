@@ -1,252 +1,116 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfólio Chat em Tempo Real</title>
-    <!-- Carrega Tailwind CSS para estilização rápida e responsiva -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Define a fonte Inter (padrão Google) -->
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f8f8f8; /* Fundo levemente fora do branco puro para conforto visual */
-        }
-        /* Estilos customizados para a caixa de chat */
-        #messages {
-            height: calc(100vh - 120px); /* Altura total menos a área de input */
-            overflow-y: auto;
-            scroll-behavior: smooth;
-        }
-        .message-bubble {
-            max-width: 80%;
-            word-wrap: break-word;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>Chat Público</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+<style>
+    body {
+        background: white;
+        color: black;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+    }
+
+    h1 {
+        text-align: center;
+        font-weight: bold;
+    }
+
+    #messages {
+        width: 100%;
+        height: 400px;
+        border: 2px solid black;
+        padding: 10px;
+        overflow-y: scroll;
+        background: #ffffff;
+        margin-bottom: 10px;
+    }
+
+    #textInput {
+        width: 80%;
+        padding: 10px;
+        border: 2px solid black;
+        font-size: 16px;
+    }
+
+    #sendBtn {
+        width: 18%;
+        padding: 10px;
+        background: black;
+        color: white;
+        font-size: 16px;
+        border: none;
+        cursor: pointer;
+    }
+
+    #sendBtn:hover {
+        background: #333;
+    }
+</style>
 </head>
-<body class="h-screen flex items-center justify-center p-4">
 
-    <!-- Container Principal do Chat -->
-    <div id="chat-container" class="w-full max-w-xl bg-white shadow-xl rounded-xl flex flex-col h-[90vh] md:h-[80vh]">
+<body>
 
-        <!-- Cabeçalho (Simulando o Portfólio) -->
-        <header class="p-4 border-b border-gray-200">
-            <h1 class="text-2xl font-bold text-gray-800">Meu Portfólio de Chat</h1>
-            <p class="text-sm text-gray-500">Diga um "Olá" ou deixe seu feedback!</p>
-            <p id="user-id-display" class="text-xs text-blue-500 mt-1"></p>
-        </header>
+<h1>Chat Público</h1>
 
-        <!-- Área de Mensagens (Onde as mensagens aparecem) -->
-        <div id="messages" class="flex-grow p-4 space-y-4">
-            <!-- As mensagens serão injetadas aqui pelo JavaScript -->
-            <div id="loading-indicator" class="text-center text-gray-500">Carregando mensagens...</div>
-        </div>
+<div id="messages"></div>
 
-        <!-- Área de Input (Para digitar e enviar mensagens) -->
-        <div id="input-area" class="p-4 border-t border-gray-200">
-            <div class="flex space-x-2">
-                <input type="text" id="message-input" placeholder="Digite sua mensagem e pressione Enter..."
-                       class="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-                       autocomplete="off"
-                       maxlength="500">
-                <button id="send-button"
-                        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-150 ease-in-out shadow-md disabled:bg-gray-400">
-                    Enviar
-                </button>
-            </div>
-        </div>
-    </div>
+<div>
+    <input id="textInput" type="text" placeholder="Digite algo..." />
+    <button id="sendBtn">Enviar</button>
+</div>
 
-    <!-- Scripts do Firebase e Lógica do Chat -->
-    <script type="module">
-        // Importações necessárias do Firebase
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+<script>
+    // --------------------
+    // CONFIGURAÇÃO DO FIREBASE
+    // --------------------
+    const firebaseConfig = {
+        apiKey: "SUA_API_KEY",
+        authDomain: "SEU_AUTH_DOMAIN",
+        databaseURL: "SUA_DATABASE_URL",
+        projectId: "SEU_PROJECT_ID",
+        storageBucket: "SEU_STORAGE_BUCKET",
+        messagingSenderId: "SEU_SENDER_ID",
+        appId: "SEU_APP_ID"
+    };
 
-        // Variáveis globais do ambiente Canvas
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-        let db;
-        let auth;
-        let userId = null;
-        let isAuthReady = false;
+    const messagesDiv = document.getElementById("messages");
+    const input = document.getElementById("textInput");
+    const sendBtn = document.getElementById("sendBtn");
 
-        const messagesContainer = document.getElementById('messages');
-        const inputElement = document.getElementById('message-input');
-        const sendButton = document.getElementById('send-button');
-        const userIdDisplay = document.getElementById('user-id-display');
-        const loadingIndicator = document.getElementById('loading-indicator');
+    // Enviar mensagem
+    sendBtn.onclick = function() {
+        const text = input.value.trim();
+        if (text.length === 0) return;
 
-        // Habilita logs do Firestore para debug
-        setLogLevel('error');
-
-        // --- 1. Inicialização e Autenticação do Firebase ---
-        function setupFirebase() {
-            if (!firebaseConfig) {
-                console.error("Configuração do Firebase não encontrada.");
-                messagesContainer.innerHTML = '<div class="text-red-500 text-center">Erro: Configuração do Firebase ausente.</div>';
-                return;
-            }
-
-            try {
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                // Configura o listener de autenticação
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        userIdDisplay.textContent = `Seu ID (para referenciar): ${userId}`;
-                        isAuthReady = true;
-                        // Habilita o input e botão após a autenticação
-                        inputElement.disabled = false;
-                        sendButton.disabled = false;
-                        // Inicia a escuta das mensagens
-                        listenForMessages();
-                    } else {
-                        // Tenta autenticar
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    }
-                });
-
-            } catch (error) {
-                console.error("Erro ao inicializar ou autenticar o Firebase:", error);
-                messagesContainer.innerHTML = `<div class="text-red-500 text-center">Erro de Inicialização: ${error.message}</div>`;
-            }
-        }
-
-        // --- 2. Escutar Mensagens em Tempo Real (onSnapshot) ---
-        function listenForMessages() {
-            if (!isAuthReady || !db) return;
-
-            const collectionPath = 'artifacts/' + appId + '/public/data/chat_messages';
-            const messagesRef = collection(db, collectionPath);
-            // Cria uma query para ordenar por data (timestamp)
-            const q = query(messagesRef, orderBy('timestamp', 'asc'));
-
-            // onSnapshot fornece atualizações em tempo real
-            onSnapshot(q, (snapshot) => {
-                loadingIndicator.style.display = 'none';
-                messagesContainer.innerHTML = ''; // Limpa antes de renderizar
-
-                snapshot.docs.forEach((doc) => {
-                    const messageData = doc.data();
-                    displayMessage(messageData);
-                });
-
-                // Rola para a mensagem mais recente
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            }, (error) => {
-                console.error("Erro ao receber mensagens em tempo real:", error);
-                loadingIndicator.textContent = 'Erro ao carregar o chat.';
-                loadingIndicator.className = 'text-red-500 text-center';
-            });
-        }
-
-        // --- 3. Função para Exibir a Mensagem na UI ---
-        function displayMessage(data) {
-            const isMine = data.userId === userId;
-            const alignClass = isMine ? 'justify-end' : 'justify-start';
-            const colorClass = isMine ? 'bg-blue-100 text-gray-800 border-blue-200' : 'bg-white text-black border-gray-300';
-            const senderText = isMine ? 'Você' : `Usuário ${data.userId.substring(0, 4)}...`;
-
-            const messageElement = document.createElement('div');
-            messageElement.className = `flex ${alignClass}`;
-
-            // Formatação do timestamp (opcional, mostra apenas hora)
-            let timeString = '';
-            if (data.timestamp && data.timestamp.toDate) {
-                const date = data.timestamp.toDate();
-                timeString = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-            }
-
-            messageElement.innerHTML = `
-                <div class="message-bubble p-3 rounded-xl border shadow-sm ${colorClass}">
-                    <p class="text-xs font-semibold mb-1 ${isMine ? 'text-blue-700' : 'text-gray-600'}">${senderText}</p>
-                    <p class="text-sm">${data.text}</p>
-                    <p class="text-right text-xs mt-1 text-gray-400">${timeString}</p>
-                </div>
-            `;
-            messagesContainer.appendChild(messageElement);
-        }
-
-        // --- 4. Função para Enviar a Mensagem ---
-        async function sendMessage() {
-            const text = inputElement.value.trim();
-
-            if (!isAuthReady || !db) {
-                console.error("Firebase não está pronto. Tente novamente.");
-                return;
-            }
-
-            if (text === "") {
-                return; // Não envia mensagem vazia
-            }
-
-            // Desabilita temporariamente o input para evitar envios duplicados
-            inputElement.disabled = true;
-            sendButton.disabled = true;
-
-            const collectionPath = 'artifacts/' + appId + '/public/data/chat_messages';
-
-            try {
-                await addDoc(collection(db, collectionPath), {
-                    userId: userId,
-                    text: text,
-                    timestamp: serverTimestamp() // Usa timestamp do servidor para ordenação
-                });
-                inputElement.value = ''; // Limpa o input
-            } catch (error) {
-                console.error("Erro ao enviar mensagem:", error);
-                // Em caso de erro, exibe um modal customizado (ou log)
-                alertModal("Erro", "Não foi possível enviar a mensagem. Tente novamente.");
-            } finally {
-                // Habilita novamente
-                inputElement.disabled = false;
-                sendButton.disabled = false;
-                inputElement.focus();
-            }
-        }
-
-        // --- 5. Handlers de Eventos ---
-
-        // Enviar com o botão
-        sendButton.addEventListener('click', sendMessage);
-
-        // Enviar com a tecla Enter
-        inputElement.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage();
-            }
+        db.ref("chat").push({
+            text: text,
+            time: Date.now()
         });
 
-        // Simples substituição de alert()
-        function alertModal(title, message) {
-            console.error(`${title}: ${message}`);
-            // Em um ambiente real, você criaria um modal bonitinho em vez de um console.error
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'p-3 bg-red-100 text-red-700 rounded-lg mt-2';
-            errorDiv.textContent = message;
-            document.getElementById('input-area').prepend(errorDiv);
-            setTimeout(() => errorDiv.remove(), 5000); // Remove o erro após 5 segundos
-        }
+        input.value = "";
+    };
 
-        // Inicializa o aplicativo ao carregar
-        setupFirebase();
+    // Exibir mensagens em tempo real
+    db.ref("chat").on("child_added", snapshot => {
+        const msg = snapshot.val();
+        const p = document.createElement("p");
+        p.textContent = msg.text;
+        messagesDiv.appendChild(p);
 
-        // Desabilita input até a autenticação ser concluída
-        inputElement.disabled = true;
-        sendButton.disabled = true;
+        // Scroll automático
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
+</script>
 
-    </script>
 </body>
 </html>
