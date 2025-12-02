@@ -1,25 +1,40 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Chat – GitHub</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Bloco de Notas Compartilhado</title>
+    <style>
+        body { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+            background: #f3f3f3; 
+            font-family: Arial;
+        }
+        textarea {
+            width: 80%;
+            height: 80%;
+            font-size: 18px;
+            padding: 10px;
+        }
+    </style>
 </head>
 <body>
+    <textarea id="box" placeholder="Digite aqui..."></textarea>
 
-<div class="chat-container">
-    <h2>Chat</h2>
+    <script>
+        const box = document.getElementById("box");
+        const socket = new WebSocket("ws://" + window.location.host);
 
-    <div id="messages" class="messages">
-        <!-- As mensagens aparecerão aqui -->
-    </div>
+        socket.onmessage = (event) => {
+            box.value = event.data;
+        };
 
-    <div class="input-area">
-        <textarea id="userMessage" placeholder="Escreva sua mensagem..."></textarea>
-        <button onclick="sendMessage()">Enviar</button>
-    </div>
-</div>
-
-<script src="script.js"></script>
+        box.addEventListener("input", () => {
+            socket.send(box.value);
+        });
+    </script>
 </body>
 </html>
